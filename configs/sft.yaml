@@ -8,6 +8,13 @@ model:
   # Disable thinking mode for Qwen3 (only applies when using chat template)
   extra_chat_template_kwargs:
     enable_thinking: false
+  # GPU selection:
+  #   - "auto": use all available GPUs (default)
+  #   - "cuda:0": use only GPU 0
+  #   - "cuda:1": use only GPU 1
+  #   - [0, 1]: use GPUs 0 and 1 for model parallelism
+  #   - null: let device_map="auto" decide
+  device: [2, 7]
 
 training:
   num_epochs: 3

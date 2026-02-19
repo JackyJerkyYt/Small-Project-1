@@ -10,3 +10,8 @@ eval:
   per_device_batch_size: 4  # number of prompts to generate in parallel (higher = faster but more VRAM)
   max_samples: null  # null = use all samples; set an integer to limit
   bf16: true  # use bfloat16 for inference (set to false for fp32)
+  # GPU selection:
+  #   - "auto": use all available GPUs (default)
+  #   - "cuda:0": use only GPU 0
+  #   - "cuda:1": use only GPU 1
+  device: "auto"

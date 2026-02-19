@@ -79,6 +79,7 @@ def main():
     cfg = load_config(args.config)
     model_name = cfg["model"]["name"]
     extra_kwargs = cfg["model"].get("extra_chat_template_kwargs", {})
+    device_cfg = cfg["model"].get("device", "auto")
     train_cfg = cfg["training"]
     grpo_cfg = cfg["grpo"]
 
@@ -88,8 +89,22 @@ def main():
         tokenizer.pad_token = tokenizer.eos_token
 
     attn_impl = get_attn_implementation()
+    
+    # Handle device configuration
+    if device_cfg == "auto" or device_cfg is None:
+        device_map = "auto"
+    elif isinstance(device_cfg, str) and device_cfg.startswith("cuda:"):
+        device_map = {"": device_cfg}  # put whole model on specified GPU
+    elif isinstance(device_cfg, list):
+        device_map = "auto"  # use accelerate's auto with visible devices
+        import os
+        os.environ["CUDA_VISIBLE_DEVICES"] = ",".join(str(d) for d in device_cfg)
+    else:
+        device_map = device_cfg
+    
     model_kwargs = {
         "torch_dtype": torch.bfloat16 if train_cfg.get("bf16") else torch.float32,
+        "device_map": device_map,
     }
     if attn_impl:
         model_kwargs["attn_implementation"] = attn_impl
