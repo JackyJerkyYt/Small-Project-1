@@ -1,0 +1,12 @@
+# Evaluation Configuration
+# ------------------------
+
+generation:
+  max_new_tokens: 2048       # set high to avoid truncation during generation
+  temperature: 0.0
+  do_sample: false
+
+eval:
+  per_device_batch_size: 4  # number of prompts to generate in parallel (higher = faster but more VRAM)
+  max_samples: null  # null = use all samples; set an integer to limit
+  bf16: true  # use bfloat16 for inference (set to false for fp32)

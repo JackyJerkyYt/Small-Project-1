@@ -1,0 +1,23 @@
+[project]
+name = "llm-finetune-eval"
+version = "0.1.0"
+description = "Fine-tune and evaluate instruction-tuned LLMs with/without chat templates"
+requires-python = ">=3.10"
+dependencies = [
+    "torch>=2.1.0",
+    "transformers>=4.46.0",
+    "trl>=0.12.0",
+    "datasets>=3.0.0",
+    "accelerate>=1.0.0",
+    "peft>=0.13.0",
+    "bitsandbytes>=0.44.0",
+    "pyyaml>=6.0",
+    "matplotlib>=3.8.0",
+    "pandas>=2.1.0",
+    "tqdm>=4.66.0",
+    "jsonlines>=4.0.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"

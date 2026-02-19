@@ -1,0 +1,25 @@
+# SFT (Supervised Fine-Tuning) Configuration
+# -------------------------------------------
+
+model:
+  # Qwen3-4B model (instruction-tuned variant)
+  # Note: Qwen3 uses "Qwen/Qwen3-4B" naming (no "-Instruct" suffix)
+  name: "Qwen/Qwen3-4B"
+  # Disable thinking mode for Qwen3 (only applies when using chat template)
+  extra_chat_template_kwargs:
+    enable_thinking: false
+
+training:
+  num_epochs: 3
+  per_device_train_batch_size: 2
+  gradient_accumulation_steps: 8
+  learning_rate: 2.0e-5
+  weight_decay: 0.01
+  warmup_ratio: 0.1
+  lr_scheduler_type: "cosine"
+  max_seq_length: 4096       # set high to avoid truncation; Qwen3 supports 32K
+  bf16: true
+  logging_steps: 10
+  save_strategy: "epoch"
+  seed: 42
+  gradient_checkpointing: true
