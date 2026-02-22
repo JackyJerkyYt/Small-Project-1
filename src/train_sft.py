@@ -72,10 +72,7 @@ def _generate_output_dir(task: str, use_chat_template: bool, mask_question: bool
     training_format = "chat" if use_chat_template else "nochat"
     training_method = "sft"
     
-    if use_chat_template:
-        masking = "default"
-    else:
-        masking = "maskq" if mask_question else "fullloss"
+    masking = "maskq" if mask_question else "fullloss"
     
     timestamp = datetime.now(ZoneInfo("America/Los_Angeles")).strftime("%Y%m%d_%H%M%S")
     
@@ -162,10 +159,6 @@ def main():
             "output_dir": args.output_dir,
         }
     )
-
-    if args.mask_question and args.use_chat_template:
-        print("WARNING: --mask_question with --use_chat_template is unusual. "
-              "The question masking is designed for the no-chat-template setting.")
 
     print(f"Loading model: {model_name}")
     tokenizer = AutoTokenizer.from_pretrained(model_name)
