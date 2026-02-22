@@ -2,16 +2,20 @@
 # ------------------------
 
 generation:
-  max_new_tokens: 2048       # set high to avoid truncation during generation
+  max_new_tokens: 512       # set high to avoid truncation during generation
   temperature: 0.0
-  do_sample: false
+  do_sample: null
+
+chat_template:
+  enable_thinking: false    # disable Qwen3 thinking mode during eval
 
 eval:
-  per_device_batch_size: 4  # number of prompts to generate in parallel (higher = faster but more VRAM)
+  per_device_batch_size: 16  # number of prompts to generate in parallel (higher = faster but more VRAM)
   max_samples: null  # null = use all samples; set an integer to limit
   bf16: true  # use bfloat16 for inference (set to false for fp32)
-  # GPU selection:
+  # GPU selection (sets CUDA_VISIBLE_DEVICES before importing torch):
   #   - "auto": use all available GPUs (default)
   #   - "cuda:0": use only GPU 0
-  #   - "cuda:1": use only GPU 1
-  device: "auto"
+  #   - "cuda:2": use only GPU 2
+  #   - [2, 7]: use GPUs 2 and 7 for model parallelism
+  device: [6]

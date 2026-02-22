@@ -8,13 +8,12 @@ model:
   # Disable thinking mode for Qwen3 (only applies when using chat template)
   extra_chat_template_kwargs:
     enable_thinking: false
-  # GPU selection:
+  # GPU selection (sets CUDA_VISIBLE_DEVICES before importing torch):
   #   - "auto": use all available GPUs (default)
   #   - "cuda:0": use only GPU 0
-  #   - "cuda:1": use only GPU 1
-  #   - [0, 1]: use GPUs 0 and 1 for model parallelism
-  #   - null: let device_map="auto" decide
-  device: "auto"
+  #   - "cuda:2": use only GPU 2
+  #   - [2, 7]: use GPUs 2 and 7 for model parallelism
+  device: [0, 1, 5]
 
 training:
   num_epochs: 1
@@ -24,7 +23,7 @@ training:
   weight_decay: 0.01
   warmup_ratio: 0.1
   lr_scheduler_type: "cosine"
-  max_seq_length: 4096       # set high to avoid truncation; Qwen3 supports 32K
+  max_seq_length: 4096       # this is not used
   bf16: true
   logging_steps: 10
   save_strategy: "epoch"

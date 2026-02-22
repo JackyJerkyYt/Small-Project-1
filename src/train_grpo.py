@@ -1,7 +1,85 @@
 """GRPO training script with binary reward (correct=1, wrong=0)."""
 
 import argparse
+import copy
+import os
+from datetime import datetime
+from zoneinfo import ZoneInfo
 import yaml
+
+# =============================================================================
+# EARLY CONFIG LOADING (before torch import)
+# =============================================================================
+# We load the entire config into memory ONCE at startup to prevent race conditions.
+# If the user modifies the config file after starting training, it won't affect this run.
+
+def _parse_args_early():
+    """Parse args early to get config path and flags before torch import."""
+    import sys
+    config_path = "configs/grpo.yaml"
+    task = None
+    use_chat_template = False
+    output_dir = None
+    
+    i = 1
+    while i < len(sys.argv):
+        arg = sys.argv[i]
+        if arg == "--config" and i + 1 < len(sys.argv):
+            config_path = sys.argv[i + 1]
+            i += 2
+        elif arg == "--task" and i + 1 < len(sys.argv):
+            task = sys.argv[i + 1]
+            i += 2
+        elif arg == "--use_chat_template":
+            use_chat_template = True
+            i += 1
+        elif arg == "--output_dir" and i + 1 < len(sys.argv):
+            output_dir = sys.argv[i + 1]
+            i += 2
+        else:
+            i += 1
+    
+    return {
+        "config_path": config_path,
+        "task": task,
+        "use_chat_template": use_chat_template,
+        "output_dir": output_dir,
+    }
+
+def _load_config_once(config_path: str) -> dict:
+    """Load config file and return a deep copy to ensure immutability."""
+    with open(config_path) as f:
+        cfg = yaml.safe_load(f)
+    return copy.deepcopy(cfg)
+
+def _configure_cuda_devices(cfg: dict):
+    """Set CUDA_VISIBLE_DEVICES based on config before torch is imported."""
+    device_cfg = cfg.get("model", {}).get("device", "auto")
+    
+    if isinstance(device_cfg, list):
+        os.environ["CUDA_VISIBLE_DEVICES"] = ",".join(str(d) for d in device_cfg)
+    elif isinstance(device_cfg, str) and device_cfg.startswith("cuda:"):
+        gpu_id = device_cfg.split(":")[1]
+        os.environ["CUDA_VISIBLE_DEVICES"] = gpu_id
+
+def _generate_output_dir(task: str, use_chat_template: bool) -> str:
+    """Generate a descriptive output directory name."""
+    training_format = "chat" if use_chat_template else "nochat"
+    training_method = "grpo"
+    masking = "default"  # GRPO doesn't have masking options
+    
+    timestamp = datetime.now(ZoneInfo("America/Los_Angeles")).strftime("%Y%m%d_%H%M%S")
+    
+    dir_name = f"{training_format}_{training_method}_{masking}_{task}_{timestamp}"
+    return os.path.join("results", task, "models", dir_name)
+
+# Parse args and load config ONCE at module load time
+_EARLY_ARGS = _parse_args_early()
+_CONFIG_PATH = _EARLY_ARGS["config_path"]
+_FROZEN_CONFIG = _load_config_once(_CONFIG_PATH)
+_configure_cuda_devices(_FROZEN_CONFIG)
+
+# Now safe to import torch
 import torch
 from datasets import Dataset
 from transformers import AutoTokenizer, AutoModelForCausalLM
@@ -20,9 +98,26 @@ def get_attn_implementation() -> str | None:
         return None
 
 
-def load_config(path: str) -> dict:
-    with open(path) as f:
-        return yaml.safe_load(f)
+def _save_config_snapshot(cfg: dict, config_path: str, output_dir: str, args_dict: dict):
+    """Save a copy of the config and CLI args used for this run."""
+    os.makedirs(output_dir, exist_ok=True)
+    
+    # Save the frozen config
+    config_snapshot_path = os.path.join(output_dir, "config_snapshot.yaml")
+    with open(config_snapshot_path, "w") as f:
+        yaml.dump(cfg, f, default_flow_style=False, sort_keys=False)
+    
+    # Also save CLI args for full reproducibility
+    run_info = {
+        "original_config_path": config_path,
+        "cli_args": args_dict,
+        "timestamp": datetime.now().isoformat(),
+    }
+    run_info_path = os.path.join(output_dir, "run_info.yaml")
+    with open(run_info_path, "w") as f:
+        yaml.dump(run_info, f, default_flow_style=False, sort_keys=False)
+    
+    print(f"Config snapshot saved to: {config_snapshot_path}")
 
 
 def make_reward_fn(task, use_chat_template: bool, tokenizer, extra_kwargs: dict):
@@ -72,16 +167,33 @@ def main():
     parser.add_argument("--task", type=str, required=True, help="Task name (e.g. gsm8k)")
     parser.add_argument("--use_chat_template", action="store_true",
                         help="Format prompts with the model's chat template")
-    parser.add_argument("--output_dir", type=str, required=True,
-                        help="Directory to save the fine-tuned model")
+    parser.add_argument("--output_dir", type=str, default=None,
+                        help="Directory to save the fine-tuned model (auto-generated if not provided)")
     args = parser.parse_args()
 
-    cfg = load_config(args.config)
+    # Use the frozen config that was loaded at module startup (prevents race conditions)
+    cfg = _FROZEN_CONFIG
     model_name = cfg["model"]["name"]
     extra_kwargs = cfg["model"].get("extra_chat_template_kwargs", {})
-    device_cfg = cfg["model"].get("device", "auto")
     train_cfg = cfg["training"]
     grpo_cfg = cfg["grpo"]
+
+    # Generate output_dir if not provided
+    if args.output_dir is None:
+        args.output_dir = _generate_output_dir(args.task, args.use_chat_template)
+        print(f"Auto-generated output_dir: {args.output_dir}")
+
+    # Save config snapshot immediately (before any training that might take hours)
+    _save_config_snapshot(
+        cfg=cfg,
+        config_path=_CONFIG_PATH,
+        output_dir=args.output_dir,
+        args_dict={
+            "task": args.task,
+            "use_chat_template": args.use_chat_template,
+            "output_dir": args.output_dir,
+        }
+    )
 
     print(f"Loading model: {model_name}")
     tokenizer = AutoTokenizer.from_pretrained(model_name)
@@ -90,21 +202,11 @@ def main():
 
     attn_impl = get_attn_implementation()
     
-    # Handle device configuration
-    if device_cfg == "auto" or device_cfg is None:
-        device_map = "auto"
-    elif isinstance(device_cfg, str) and device_cfg.startswith("cuda:"):
-        device_map = {"": device_cfg}  # put whole model on specified GPU
-    elif isinstance(device_cfg, list):
-        device_map = "auto"  # use accelerate's auto with visible devices
-        import os
-        os.environ["CUDA_VISIBLE_DEVICES"] = ",".join(str(d) for d in device_cfg)
-    else:
-        device_map = device_cfg
-    
+    # Device configuration is handled at script startup via CUDA_VISIBLE_DEVICES
+    # Here we just use device_map="auto" to distribute across visible GPUs
     model_kwargs = {
         "torch_dtype": torch.bfloat16 if train_cfg.get("bf16") else torch.float32,
-        "device_map": device_map,
+        "device_map": "auto",
     }
     if attn_impl:
         model_kwargs["attn_implementation"] = attn_impl
@@ -147,7 +249,6 @@ def main():
         # GRPO-specific
         num_generations=grpo_cfg["num_generations"],
         max_completion_length=grpo_cfg["max_new_tokens"],
-        max_prompt_length=grpo_cfg.get("max_prompt_length", 512),
         beta=grpo_cfg.get("beta", 0.1),
         temperature=grpo_cfg.get("temperature", 0.7),
     )

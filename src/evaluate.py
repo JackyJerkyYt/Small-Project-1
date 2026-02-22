@@ -4,6 +4,31 @@ import argparse
 import json
 import os
 import yaml
+
+# Must configure CUDA devices BEFORE importing torch
+def _configure_cuda_devices(config_path: str):
+    """Read config and set CUDA_VISIBLE_DEVICES before torch is imported."""
+    with open(config_path) as f:
+        cfg = yaml.safe_load(f)
+    device_cfg = cfg.get("eval", {}).get("device", "auto")
+    
+    if isinstance(device_cfg, list):
+        os.environ["CUDA_VISIBLE_DEVICES"] = ",".join(str(d) for d in device_cfg)
+    elif isinstance(device_cfg, str) and device_cfg.startswith("cuda:"):
+        gpu_id = device_cfg.split(":")[1]
+        os.environ["CUDA_VISIBLE_DEVICES"] = gpu_id
+
+# Parse args early to get config path
+def _get_config_path():
+    import sys
+    for i, arg in enumerate(sys.argv):
+        if arg == "--config" and i + 1 < len(sys.argv):
+            return sys.argv[i + 1]
+    return "configs/eval.yaml"
+
+_configure_cuda_devices(_get_config_path())
+
+# Now safe to import torch
 import torch
 from tqdm import tqdm
 from transformers import AutoTokenizer, AutoModelForCausalLM
@@ -92,7 +117,27 @@ def main():
     cfg = load_config(args.config)
     gen_cfg = cfg.get("generation", {})
     eval_cfg = cfg.get("eval", {})
-    extra_kwargs = json.loads(args.extra_chat_template_kwargs)
+    extra_kwargs = cfg.get("chat_template", {})
+    extra_kwargs.update(json.loads(args.extra_chat_template_kwargs))
+
+    # Auto-populate training metadata from run_info.yaml if present
+    run_info_path = os.path.join(args.model_path, "run_info.yaml")
+    if os.path.exists(run_info_path):
+        with open(run_info_path) as f:
+            run_info = yaml.safe_load(f)
+        cli_args = run_info.get("cli_args", {})
+        if not args.train_method:
+            config_path = run_info.get("original_config_path", "")
+            if "grpo" in config_path:
+                args.train_method = "grpo"
+            elif "sft" in config_path:
+                args.train_method = "sft"
+        if not args.train_chat_template:
+            args.train_chat_template = cli_args.get("use_chat_template", False)
+        if not args.train_mask_question:
+            args.train_mask_question = cli_args.get("mask_question", False)
+        print(f"Auto-detected training info: method={args.train_method}, "
+              f"chat_template={args.train_chat_template}, mask_question={args.train_mask_question}")
 
     os.makedirs(args.output_dir, exist_ok=True)
 
@@ -103,22 +148,12 @@ def main():
 
     attn_impl = get_attn_implementation()
     use_bf16 = eval_cfg.get("bf16", True)  # default to bf16 for inference
-    device_cfg = eval_cfg.get("device", "auto")
     
-    # Handle device configuration
-    if device_cfg == "auto" or device_cfg is None:
-        device_map = "auto"
-    elif isinstance(device_cfg, str) and device_cfg.startswith("cuda:"):
-        device_map = {"": device_cfg}  # put whole model on specified GPU
-    elif isinstance(device_cfg, list):
-        device_map = "auto"
-        os.environ["CUDA_VISIBLE_DEVICES"] = ",".join(str(d) for d in device_cfg)
-    else:
-        device_map = device_cfg
-    
+    # Device configuration is handled at script startup via CUDA_VISIBLE_DEVICES
+    # Here we just use device_map="auto" to distribute across visible GPUs
     model_kwargs = {
         "torch_dtype": torch.bfloat16 if use_bf16 else torch.float32,
-        "device_map": device_map,
+        "device_map": "auto",
     }
     if attn_impl:
         model_kwargs["attn_implementation"] = attn_impl
