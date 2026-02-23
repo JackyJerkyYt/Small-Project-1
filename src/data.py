@@ -1,5 +1,7 @@
 """Data preparation: build datasets for SFT with or without chat template, with masking options."""
 
+import warnings
+
 import torch
 from torch.utils.data import Dataset
 from dataclasses import dataclass
@@ -75,6 +77,9 @@ class SFTDataset(Dataset):
 
     def _prepare(self, samples: list[Sample]) -> list[dict]:
         prepared = []
+        mismatch_count = 0
+        total_fallback_count = 0
+
         for s in samples:
             if self.use_chat_template:
                 full_text = format_with_chat_template(
@@ -108,19 +113,17 @@ class SFTDataset(Dataset):
                     add_special_tokens=False,
                 )["input_ids"]
                 prompt_len = len(prompt_ids)
-                
-                # Validate that tokenization is consistent at the boundary
-                # (i.e., the first prompt_len tokens of full_text match prompt_text tokens)
+
                 if prompt_ids != input_ids[:prompt_len]:
-                    # Tokenization boundary mismatch - find the actual answer start
-                    # by finding the longest prefix of input_ids that matches prompt_ids
+                    mismatch_count += 1
                     for i in range(min(len(prompt_ids), len(input_ids)), 0, -1):
                         if prompt_ids[:i] == input_ids[:i]:
                             prompt_len = i
                             break
                     else:
-                        prompt_len = 0  # fallback: no masking if completely misaligned
-                
+                        prompt_len = 0
+                        total_fallback_count += 1
+
                 labels = [-100] * prompt_len + input_ids[prompt_len:]
             else:
                 labels = list(input_ids)
@@ -130,6 +133,16 @@ class SFTDataset(Dataset):
                 "attention_mask": attention_mask,
                 "labels": labels,
             })
+
+        if self.mask_question and mismatch_count > 0:
+            print(f"Tokenization boundary mismatches: {mismatch_count}/{len(samples)} "
+                  f"(adjusted prompt_len for these samples)")
+        if total_fallback_count > 0:
+            warnings.warn(
+                f"{total_fallback_count}/{len(samples)} samples had completely misaligned "
+                f"tokenization — masking was disabled for these (prompt_len=0, full loss applied)."
+            )
+
         return prepared
 
     def __len__(self):

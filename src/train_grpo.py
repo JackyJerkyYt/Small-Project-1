@@ -87,6 +87,7 @@ from trl import GRPOConfig, GRPOTrainer
 
 from tasks import get_task
 from src.data import format_with_chat_template, format_without_chat_template
+from src.config_utils import validate_config
 
 
 def get_attn_implementation() -> str | None:
@@ -173,6 +174,7 @@ def main():
 
     # Use the frozen config that was loaded at module startup (prevents race conditions)
     cfg = _FROZEN_CONFIG
+    validate_config(cfg, "grpo")
     model_name = cfg["model"]["name"]
     extra_kwargs = cfg["model"].get("extra_chat_template_kwargs", {})
     train_cfg = cfg["training"]
@@ -249,6 +251,7 @@ def main():
         # GRPO-specific
         num_generations=grpo_cfg["num_generations"],
         max_completion_length=grpo_cfg["max_new_tokens"],
+        max_prompt_length=grpo_cfg.get("max_prompt_length", 512),
         beta=grpo_cfg.get("beta", 0.1),
         temperature=grpo_cfg.get("temperature", 0.7),
     )

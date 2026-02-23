@@ -4,10 +4,9 @@
 generation:
   max_new_tokens: 512       # set high to avoid truncation during generation
   temperature: 0.0
-  do_sample: null
+  do_sample: false
 
-chat_template:
-  enable_thinking: false    # disable Qwen3 thinking mode during eval
+
 
 eval:
   per_device_batch_size: 16  # number of prompts to generate in parallel (higher = faster but more VRAM)
