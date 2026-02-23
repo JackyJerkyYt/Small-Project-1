@@ -2,12 +2,8 @@
 # -------------------------------------------------------
 
 model:
-  # Qwen3-4B model (instruction-tuned variant)
-  # Note: Qwen3 uses "Qwen/Qwen3-4B" naming (no "-Instruct" suffix)
-  name: "Qwen/Qwen3-4B"
-  # Disable thinking mode for Qwen3 (only applies when using chat template)
-  extra_chat_template_kwargs:
-    enable_thinking: false
+  # Qwen2.5-3B-Instruct model
+  name: "Qwen/Qwen2.5-3B-Instruct"
   # GPU selection (sets CUDA_VISIBLE_DEVICES before importing torch):
   #   - "auto": use all available GPUs (default)
   #   - "cuda:0": use only GPU 0
@@ -23,7 +19,6 @@ training:
   weight_decay: 0.01
   warmup_ratio: 0.1
   lr_scheduler_type: "cosine"
-  max_seq_length: 4096       # this is not used
   bf16: true
   logging_steps: 10
   save_strategy: "epoch"

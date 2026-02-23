@@ -69,6 +69,13 @@ ALL_EXPERIMENTS = [
         mask_question=True,
         description="SFT without chat template, loss on answer only (question masked)",
     ),
+    Experiment(
+        name="sft_chat_mask_q",
+        method="sft",
+        use_chat_template=True,
+        mask_question=True,
+        description="SFT with chat template, loss on answer only",
+    ),
 ]
 
 
@@ -199,7 +206,7 @@ Available experiments:
     parser.add_argument("--only_report", action="store_true",
                         help="Skip training+eval, only generate the report")
     parser.add_argument("--extra_chat_template_kwargs", type=str,
-                        default='{"enable_thinking": false}',
+                        default='{}',
                         help="JSON extra kwargs for chat template")
     args = parser.parse_args()
 

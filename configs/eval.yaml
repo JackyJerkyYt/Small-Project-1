@@ -17,4 +17,4 @@ eval:
   #   - "cuda:0": use only GPU 0
   #   - "cuda:2": use only GPU 2
   #   - [2, 7]: use GPUs 2 and 7 for model parallelism
-  device: [6]
+  device: [5]

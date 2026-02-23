@@ -1,1 +1,5 @@
 /.cursor
+/.venv
+/results_qwen2.5
+__pycache__/
+*.pyc

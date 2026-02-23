@@ -29,6 +29,19 @@ KNOWN_KEYS = {
         "chat_template": {"enable_thinking"},
         "eval": {"per_device_batch_size", "max_samples", "bf16", "device"},
     },
+    "dpo": {
+        "model": {"name", "extra_chat_template_kwargs", "device"},
+        "training": {
+            "num_epochs", "per_device_train_batch_size", "gradient_accumulation_steps",
+            "learning_rate", "weight_decay", "warmup_ratio", "lr_scheduler_type",
+            "bf16", "logging_steps", "save_strategy", "seed",
+            "gradient_checkpointing",
+        },
+        "dpo": {
+            "beta", "max_length", "max_prompt_length", "loss_type",
+            "num_generations", "generation_temperature", "max_new_tokens",
+        },
+    },
 }
 
 
