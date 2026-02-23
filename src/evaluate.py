@@ -35,6 +35,7 @@ from transformers import AutoTokenizer, AutoModelForCausalLM
 
 from tasks import get_task
 from src.data import format_with_chat_template, format_without_chat_template
+from src.config_utils import validate_config
 
 
 def get_attn_implementation() -> str | None:
@@ -115,6 +116,7 @@ def main():
     args = parser.parse_args()
 
     cfg = load_config(args.config)
+    validate_config(cfg, "eval")
     gen_cfg = cfg.get("generation", {})
     eval_cfg = cfg.get("eval", {})
     extra_kwargs = cfg.get("chat_template", {})
@@ -189,8 +191,14 @@ def main():
 
     results = []
     correct = 0
+    extraction_failures = 0
+    empty_outputs = 0
     for i, (sample, model_output) in enumerate(zip(test_samples, all_outputs)):
+        if not model_output or not model_output.strip():
+            empty_outputs += 1
         extracted = task.extract_answer(model_output)
+        if extracted is None:
+            extraction_failures += 1
         gold_for_check = sample.answer_value if sample.answer_value else sample.answer
         is_correct = task.check_answer(extracted, gold_for_check)
         if is_correct:
@@ -219,6 +227,8 @@ def main():
         "total_samples": len(test_samples),
         "correct": correct,
         "accuracy": accuracy,
+        "extraction_failures": extraction_failures,
+        "empty_outputs": empty_outputs,
     }
 
     results_path = os.path.join(args.output_dir, "results.json")
@@ -235,6 +245,8 @@ def main():
     print(f"  Model:          {args.model_path}")
     print(f"  Chat template:  {args.use_chat_template}")
     print(f"  Accuracy:       {correct}/{len(test_samples)} = {accuracy:.2%}")
+    print(f"  Extract fails:  {extraction_failures}/{len(test_samples)}")
+    print(f"  Empty outputs:  {empty_outputs}/{len(test_samples)}")
     print(f"{'='*50}\n")
 
     return summary

@@ -91,6 +91,7 @@ from transformers import AutoTokenizer, AutoModelForCausalLM, TrainingArguments,
 
 from tasks import get_task
 from src.data import SFTDataset, CausalLMDataCollator
+from src.config_utils import validate_config
 
 
 def get_attn_implementation() -> str | None:
@@ -138,6 +139,7 @@ def main():
 
     # Use the frozen config that was loaded at module startup (prevents race conditions)
     cfg = _FROZEN_CONFIG
+    validate_config(cfg, "sft")
     model_name = cfg["model"]["name"]
     extra_kwargs = cfg["model"].get("extra_chat_template_kwargs", {})
     train_cfg = cfg["training"]
