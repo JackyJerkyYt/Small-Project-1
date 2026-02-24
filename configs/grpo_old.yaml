@@ -9,7 +9,7 @@ model:
   #   - "cuda:0": use only GPU 0
   #   - "cuda:2": use only GPU 2
   #   - [2, 7]: use GPUs 2 and 7 for model parallelism
-  device: [0, 6,  7]
+  device: [0, 1, 5]
 
 training:
   num_epochs: 1
@@ -26,7 +26,7 @@ training:
   gradient_checkpointing: true
 
 grpo:
-  num_generations: 8
-  max_new_tokens: 1024       # max tokens the model can generate per completion
+  num_generations: 4
+  max_new_tokens: 2048       # max tokens the model can generate per completion
   temperature: 0.7
-  beta: 0  # KL penalty coefficient, try 0 too
+  beta: 0.1

@@ -82,7 +82,7 @@ _configure_cuda_devices(_FROZEN_CONFIG)
 # Now safe to import torch
 import torch
 from datasets import Dataset
-from transformers import AutoTokenizer, AutoModelForCausalLM
+from transformers import AutoTokenizer, AutoModelForCausalLM, GenerationConfig
 from trl import GRPOConfig, GRPOTrainer
 
 from tasks import get_task
@@ -233,6 +233,16 @@ def main():
 
     reward_fn = make_reward_fn(task, args.use_chat_template, tokenizer, extra_kwargs)
 
+    # Read the model's full eos_token_id list from generation_config so that
+    # TRL stops generation on ALL end-of-sequence tokens (e.g. both <|im_end|>
+    # and <|endoftext|> for Qwen2.5), not just the tokenizer's single eos_token.
+    gen_config = GenerationConfig.from_pretrained(model_name)
+    eos_ids = gen_config.eos_token_id
+    if not isinstance(eos_ids, list):
+        eos_ids = [eos_ids]
+    extra_gen_kwargs = grpo_cfg.get("generation_kwargs", {})
+    extra_gen_kwargs.setdefault("eos_token_id", eos_ids)
+
     training_args = GRPOConfig(
         output_dir=args.output_dir,
         num_train_epochs=train_cfg["num_epochs"],
@@ -251,9 +261,9 @@ def main():
         # GRPO-specific
         num_generations=grpo_cfg["num_generations"],
         max_completion_length=grpo_cfg["max_new_tokens"],
-        max_prompt_length=grpo_cfg.get("max_prompt_length", 512),
         beta=grpo_cfg.get("beta", 0.1),
         temperature=grpo_cfg.get("temperature", 0.7),
+        generation_kwargs=extra_gen_kwargs,
     )
 
     trainer = GRPOTrainer(
