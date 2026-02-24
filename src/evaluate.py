@@ -132,6 +132,8 @@ def main():
             config_path = run_info.get("original_config_path", "")
             if "grpo" in config_path:
                 args.train_method = "grpo"
+            elif "dpo" in config_path:
+                args.train_method = "dpo"
             elif "sft" in config_path:
                 args.train_method = "sft"
         if not args.train_chat_template:

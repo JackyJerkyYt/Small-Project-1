@@ -39,7 +39,8 @@ KNOWN_KEYS = {
         },
         "dpo": {
             "beta", "max_length", "max_prompt_length", "loss_type",
-            "num_generations", "generation_temperature", "max_new_tokens",
+            "num_generations", "generation_batch_size", "generation_temperature", "max_new_tokens",
+            "min_correct", "min_incorrect", "num_pairs_per_batch",
         },
     },
 }

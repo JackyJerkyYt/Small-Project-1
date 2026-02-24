@@ -4,7 +4,7 @@ Master experiment runner.
 
 This script runs all combinations of:
   - Training format: chat_template vs no_chat_template
-  - Training method: SFT vs GRPO
+  - Training method: SFT vs GRPO vs DPO
   - Masking (for no_chat_template SFT only): full loss vs mask question
   - Evaluation format: chat_template vs no_chat_template
 
@@ -24,7 +24,7 @@ from dataclasses import dataclass
 @dataclass
 class Experiment:
     name: str
-    method: str          # "sft" or "grpo"
+    method: str          # "sft", "grpo", or "dpo"
     use_chat_template: bool
     mask_question: bool  # only relevant for SFT without chat template
     description: str
@@ -76,6 +76,21 @@ ALL_EXPERIMENTS = [
         mask_question=True,
         description="SFT with chat template, loss on answer only",
     ),
+    # --- DPO ---
+    Experiment(
+        name="dpo_chat_template",
+        method="dpo",
+        use_chat_template=True,
+        mask_question=False,
+        description="DPO with chat template",
+    ),
+    Experiment(
+        name="dpo_no_chat",
+        method="dpo",
+        use_chat_template=False,
+        mask_question=False,
+        description="DPO without chat template",
+    ),
 ]
 
 
@@ -108,6 +123,15 @@ def run_training(exp: Experiment, task: str, base_dir: str):
         cmd = [
             sys.executable, "-m", "src.train_grpo",
             "--config", "configs/grpo.yaml",
+            "--task", task,
+            "--output_dir", model_dir,
+        ]
+        if exp.use_chat_template:
+            cmd.append("--use_chat_template")
+    elif exp.method == "dpo":
+        cmd = [
+            sys.executable, "-m", "src.train_dpo",
+            "--config", "configs/dpo.yaml",
             "--task", task,
             "--output_dir", model_dir,
         ]
@@ -193,7 +217,10 @@ Available experiments:
   grpo_chat_template      - GRPO with chat template
   sft_no_chat_full_loss   - SFT without chat template (full loss)
   sft_no_chat_mask_q      - SFT without chat template (answer-only loss)
+  sft_chat_mask_q         - SFT with chat template (answer-only loss)
   grpo_no_chat            - GRPO without chat template
+  dpo_chat_template       - DPO with chat template
+  dpo_no_chat             - DPO without chat template
         """,
     )
     parser.add_argument("--task", type=str, default="gsm8k", help="Task name")
