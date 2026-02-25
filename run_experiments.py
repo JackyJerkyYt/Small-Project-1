@@ -143,7 +143,8 @@ def run_training(exp: Experiment, task: str, base_dir: str):
     return run_cmd(cmd, f"TRAIN: {exp.description}")
 
 
-def run_evaluation(exp: Experiment, task: str, base_dir: str, eval_with_chat: bool, extra_kwargs: str):
+def run_evaluation(exp: Experiment, task: str, base_dir: str, eval_with_chat: bool,
+                   extra_kwargs: str, max_samples: int | None = None):
     model_dir = os.path.join(base_dir, "models", exp.name)
     eval_suffix = "eval_chat" if eval_with_chat else "eval_raw"
     eval_dir = os.path.join(base_dir, "eval", f"{exp.name}_{eval_suffix}")
@@ -166,6 +167,8 @@ def run_evaluation(exp: Experiment, task: str, base_dir: str, eval_with_chat: bo
         cmd.append("--train_chat_template")
     if exp.mask_question:
         cmd.append("--train_mask_question")
+    if max_samples is not None:
+        cmd.extend(["--max_samples", str(max_samples)])
 
     return run_cmd(cmd, desc)
 
@@ -235,6 +238,8 @@ Available experiments:
     parser.add_argument("--extra_chat_template_kwargs", type=str,
                         default='{}',
                         help="JSON extra kwargs for chat template")
+    parser.add_argument("--max_eval_samples", type=int, default=None,
+                        help="Limit test samples for evaluation (passed to evaluate.py --max_samples)")
     args = parser.parse_args()
 
     base_dir = os.path.join(args.base_dir, args.task)
@@ -260,7 +265,8 @@ Available experiments:
                 continue
 
         for eval_with_chat in [True, False]:
-            run_evaluation(exp, args.task, base_dir, eval_with_chat, args.extra_chat_template_kwargs)
+            run_evaluation(exp, args.task, base_dir, eval_with_chat,
+                           args.extra_chat_template_kwargs, args.max_eval_samples)
 
     run_report(base_dir)
     print("\nAll done! Check the results in:", base_dir)

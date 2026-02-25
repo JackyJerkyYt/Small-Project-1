@@ -113,6 +113,8 @@ def main():
                         help="Whether training used chat template (stored in summary)")
     parser.add_argument("--train_mask_question", action="store_true",
                         help="Whether training masked the question (stored in summary)")
+    parser.add_argument("--max_samples", type=int, default=None,
+                        help="Override eval.max_samples from config (limit test samples)")
     args = parser.parse_args()
 
     cfg = load_config(args.config)
@@ -168,7 +170,7 @@ def main():
     task = get_task(args.task)
     test_samples = task.load_test()
 
-    max_samples = eval_cfg.get("max_samples")
+    max_samples = args.max_samples if args.max_samples is not None else eval_cfg.get("max_samples")
     if max_samples is not None:
         test_samples = test_samples[:max_samples]
     batch_size = eval_cfg.get("per_device_batch_size", 1)

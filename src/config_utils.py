@@ -17,7 +17,7 @@ KNOWN_KEYS = {
             "num_epochs", "per_device_train_batch_size", "gradient_accumulation_steps",
             "learning_rate", "weight_decay", "warmup_ratio", "lr_scheduler_type",
             "bf16", "logging_steps", "save_strategy", "seed",
-            "gradient_checkpointing",
+            "gradient_checkpointing", "max_train_samples",
         },
         "grpo": {
             "num_generations", "max_new_tokens", "max_prompt_length",

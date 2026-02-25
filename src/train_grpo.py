@@ -248,6 +248,9 @@ def main():
     print(f"Loading task: {args.task}")
     task = get_task(args.task)
     train_samples = task.load_train()
+    max_train = train_cfg.get("max_train_samples")
+    if max_train is not None:
+        train_samples = train_samples[:max_train]
     print(f"Training samples: {len(train_samples)}")
 
     prompts = []
