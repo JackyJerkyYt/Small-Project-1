@@ -199,6 +199,25 @@ def main():
 
     print(f"Loading model: {model_name}")
     tokenizer = AutoTokenizer.from_pretrained(model_name)
+
+    # Load the full EOS list from the pretrained generation config first.
+    # For Qwen2.5-Instruct this is [<|im_end|>=151645, <|endoftext|>=151643].
+    gen_config = GenerationConfig.from_pretrained(model_name)
+    eos_ids = gen_config.eos_token_id
+    if not isinstance(eos_ids, list):
+        eos_ids = [eos_ids]
+
+    # When using the chat template the model ends each response with <|im_end|>
+    # (the first/primary token in the pretrained generation config's eos list),
+    # not <|endoftext|>.  TRL stores tokenizer.eos_token_id as self.eos_token_id
+    # and uses that single integer for completion masking and truncation detection
+    # (grpo_trainer.py lines ~1260, ~1499).  If it mismatches the token the model
+    # actually produces, TRL falsely reports every completion as hitting the max
+    # length (clipped_ratio = 1.0) and the loss mask is wrong.  Setting eos_token
+    # to the primary generation EOS before constructing the trainer fixes this.
+    if args.use_chat_template and eos_ids and eos_ids[0] != tokenizer.eos_token_id:
+        tokenizer.eos_token = tokenizer.convert_ids_to_tokens(eos_ids[0])
+
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
 
@@ -213,6 +232,18 @@ def main():
     if attn_impl:
         model_kwargs["attn_implementation"] = attn_impl
     model = AutoModelForCausalLM.from_pretrained(model_name, **model_kwargs)
+
+    # Pre-align model.config and model.generation_config with the (possibly updated)
+    # tokenizer BEFORE trainer.train() calls align_special_tokens().  Without this,
+    # transformers detects mismatches at training time and emits the PAD/BOS/EOS
+    # warning; the alignment also rewrites generation_config fields non-atomically,
+    # which can clobber the multi-token eos_ids list we rely on for correct stopping.
+    model.config.eos_token_id = tokenizer.eos_token_id
+    model.config.bos_token_id = tokenizer.bos_token_id
+    model.config.pad_token_id = tokenizer.pad_token_id
+    model.generation_config.eos_token_id = eos_ids   # preserve the full list
+    model.generation_config.bos_token_id = tokenizer.bos_token_id
+    model.generation_config.pad_token_id = tokenizer.pad_token_id
 
     print(f"Loading task: {args.task}")
     task = get_task(args.task)
@@ -233,13 +264,8 @@ def main():
 
     reward_fn = make_reward_fn(task, args.use_chat_template, tokenizer, extra_kwargs)
 
-    # Read the model's full eos_token_id list from generation_config so that
-    # TRL stops generation on ALL end-of-sequence tokens (e.g. both <|im_end|>
-    # and <|endoftext|> for Qwen2.5), not just the tokenizer's single eos_token.
-    gen_config = GenerationConfig.from_pretrained(model_name)
-    eos_ids = gen_config.eos_token_id
-    if not isinstance(eos_ids, list):
-        eos_ids = [eos_ids]
+    # Pass the full eos_ids list into generation_kwargs so TRL's GenerationConfig
+    # also stops on ALL EOS tokens during the sampling step (belt-and-suspenders).
     extra_gen_kwargs = grpo_cfg.get("generation_kwargs", {})
     extra_gen_kwargs.setdefault("eos_token_id", eos_ids)
 

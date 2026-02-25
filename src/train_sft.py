@@ -179,6 +179,16 @@ def main():
         model_kwargs["attn_implementation"] = attn_impl
     model = AutoModelForCausalLM.from_pretrained(model_name, **model_kwargs)
 
+    # Pre-align model.config with the tokenizer before Trainer.train() calls
+    # align_special_tokens().  Without this, transformers detects mismatches at
+    # training time and emits the PAD/BOS/EOS warning about updated tokens.
+    model.config.eos_token_id = tokenizer.eos_token_id
+    model.config.bos_token_id = tokenizer.bos_token_id
+    model.config.pad_token_id = tokenizer.pad_token_id
+    if hasattr(model, "generation_config") and model.generation_config is not None:
+        model.generation_config.bos_token_id = tokenizer.bos_token_id
+        model.generation_config.pad_token_id = tokenizer.pad_token_id
+
     print(f"Loading task: {args.task}")
     task = get_task(args.task)
     train_samples = task.load_train()
