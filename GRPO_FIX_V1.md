@@ -77,3 +77,46 @@ Now the whole chain is consistent:
 | `clipped_ratio` | 1.0 (all appear max-length) | ~0.0 (correct) ✓ |
 
 The `pad_token = eos_token` line (221-222) then sets `pad_token_id = 151645` too, which is exactly right — when TRL pads a batch of completions, it pads with `<|im_end|>`, and its own EOS scan finds those padding tokens as the boundary, correctly truncating the mask for shorter sequences.
+
+---
+
+## Running GRPO
+
+### Training only (uses `configs/grpo.yaml`)
+
+```bash
+# With chat template
+python -m src.train_grpo --task gsm8k --use_chat_template
+
+# Without chat template
+python -m src.train_grpo --task gsm8k
+```
+
+Training sample count is controlled by `max_train_samples` in `configs/grpo.yaml` (set to `null` for all samples).
+
+### Evaluation only
+
+```bash
+# Evaluate a trained model with 200 test samples
+python -m src.evaluate --task gsm8k \
+  --model_path results/gsm8k/models/grpo_chat_template \
+  --output_dir results/gsm8k/eval/grpo_chat_template_eval_chat \
+  --use_chat_template \
+  --max_samples 200
+```
+
+Without `--max_samples`, it falls back to `eval.max_samples` in `configs/eval.yaml` (`null` = all).
+
+### Full pipeline via `run_experiments.py`
+
+```bash
+# Train + eval both GRPO variants, 200 eval samples
+python run_experiments.py --task gsm8k \
+  --experiments grpo_chat_template grpo_no_chat \
+  --max_eval_samples 200
+
+# Eval only (models must already exist)
+python run_experiments.py --task gsm8k \
+  --experiments grpo_chat_template grpo_no_chat \
+  --only_eval --max_eval_samples 200
+```
