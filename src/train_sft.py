@@ -2,6 +2,7 @@
 
 import argparse
 import copy
+import json
 import os
 from datetime import datetime
 from zoneinfo import ZoneInfo
@@ -19,8 +20,9 @@ def _parse_args_early():
     config_path = "configs/sft.yaml"
     task = None
     use_chat_template = False
-    mask_question = False
+    mask_question = True
     output_dir = None
+    gold_data_path = None
     
     i = 1
     while i < len(sys.argv):
@@ -34,11 +36,14 @@ def _parse_args_early():
         elif arg == "--use_chat_template":
             use_chat_template = True
             i += 1
-        elif arg == "--mask_question":
-            mask_question = True
+        elif arg == "--no_mask_question":
+            mask_question = False
             i += 1
         elif arg == "--output_dir" and i + 1 < len(sys.argv):
             output_dir = sys.argv[i + 1]
+            i += 2
+        elif arg == "--gold_data_path" and i + 1 < len(sys.argv):
+            gold_data_path = sys.argv[i + 1]
             i += 2
         else:
             i += 1
@@ -49,6 +54,7 @@ def _parse_args_early():
         "use_chat_template": use_chat_template,
         "mask_question": mask_question,
         "output_dir": output_dir,
+        "gold_data_path": gold_data_path,
     }
 
 def _load_config_once(config_path: str) -> dict:
@@ -131,11 +137,14 @@ def main():
     parser.add_argument("--task", type=str, required=True, help="Task name (e.g. gsm8k)")
     parser.add_argument("--use_chat_template", action="store_true",
                         help="Format data with the model's chat template")
-    parser.add_argument("--mask_question", action="store_true",
-                        help="Mask the question so loss only comes from the answer")
+    parser.add_argument("--no_mask_question", action="store_true",
+                        help="Disable question masking (apply loss on both question and answer)")
     parser.add_argument("--output_dir", type=str, default=None,
                         help="Directory to save the fine-tuned model (auto-generated if not provided)")
+    parser.add_argument("--gold_data_path", type=str, default=None,
+                        help="Path to gold_data.json; if provided, train on the selected gold data instead of the full training set")
     args = parser.parse_args()
+    args.mask_question = not args.no_mask_question
 
     # Use the frozen config that was loaded at module startup (prevents race conditions)
     cfg = _FROZEN_CONFIG
@@ -159,6 +168,7 @@ def main():
             "use_chat_template": args.use_chat_template,
             "mask_question": args.mask_question,
             "output_dir": args.output_dir,
+            "gold_data_path": args.gold_data_path,
         }
     )
 
@@ -191,7 +201,25 @@ def main():
 
     print(f"Loading task: {args.task}")
     task = get_task(args.task)
-    train_samples = task.load_train()
+
+    if args.gold_data_path:
+        from tasks.base import Sample
+        print(f"Loading gold data from: {args.gold_data_path}")
+        with open(args.gold_data_path) as f:
+            gold = json.load(f)
+        train_samples = [
+            Sample(
+                question=entry["question"],
+                answer=entry["gold_answer"],
+                answer_value=entry.get("gold_value"),
+            )
+            for entry in gold["data"]
+        ]
+        print(f"Gold data: {gold['selected_questions']} questions "
+              f"(from {gold['total_questions']} total, {gold['eligible_questions']} eligible)")
+    else:
+        train_samples = task.load_train()
+
     print(f"Training samples: {len(train_samples)}")
 
     dataset = SFTDataset(
