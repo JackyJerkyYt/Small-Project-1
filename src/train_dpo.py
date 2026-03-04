@@ -20,6 +20,7 @@ def _parse_args_early():
     task = None
     use_chat_template = False
     output_dir = None
+    gold_data_path = None
 
     i = 1
     while i < len(sys.argv):
@@ -36,6 +37,9 @@ def _parse_args_early():
         elif arg == "--output_dir" and i + 1 < len(sys.argv):
             output_dir = sys.argv[i + 1]
             i += 2
+        elif arg == "--gold_data_path" and i + 1 < len(sys.argv):
+            gold_data_path = sys.argv[i + 1]
+            i += 2
         else:
             i += 1
 
@@ -44,6 +48,7 @@ def _parse_args_early():
         "task": task,
         "use_chat_template": use_chat_template,
         "output_dir": output_dir,
+        "gold_data_path": gold_data_path,
     }
 
 def _load_config_once(config_path: str) -> dict:
@@ -180,6 +185,7 @@ def generate_pairs(
     dpo_cfg: dict,
     output_dir: str,
     batch_size: int = 8,
+    gold_rollouts: list[list[dict]] | None = None,
 ) -> dict:
     """Generate preference pairs via batch-level rejection sampling.
 
@@ -198,6 +204,8 @@ def generate_pairs(
     min_correct = dpo_cfg.get("min_correct", 8)
     min_incorrect = dpo_cfg.get("min_incorrect", 8)
     num_pairs_per_batch = dpo_cfg.get("num_pairs_per_batch", 32)
+    pair_mode = dpo_cfg.get("pair_mode", "pooled")
+    max_pairs_per_example = num_gen // 2
     gen_cfg = {
         "max_new_tokens": dpo_cfg.get("max_new_tokens", 1024),
         "temperature": dpo_cfg.get("generation_temperature", 0.7),
@@ -222,13 +230,26 @@ def generate_pairs(
         all_prompts.append(prompt)
         all_gold_values.append(s.answer_value if s.answer_value else s.answer)
 
+    # Reuse gold rollouts when available and num_generations matches
+    use_gold = (
+        gold_rollouts is not None
+        and len(gold_rollouts) == len(all_prompts)
+        and len(gold_rollouts[0]) == num_gen
+    )
+
     total_completions = len(all_prompts) * num_gen
     num_batches = (len(all_prompts) + batch_size - 1) // batch_size
-    print(f"Generating {total_completions} completions "
-          f"({len(all_prompts)} prompts x {num_gen} generations, "
-          f"batch_size={batch_size})...")
+    if use_gold:
+        print(f"Using {total_completions} pre-scored rollouts from gold data "
+              f"({len(all_prompts)} prompts x {num_gen} rollouts, "
+              f"batch_size={batch_size})...")
+    else:
+        print(f"Generating {total_completions} completions "
+              f"({len(all_prompts)} prompts x {num_gen} generations, "
+              f"batch_size={batch_size})...")
     print(f"Batch filtering: min_correct={min_correct}, min_incorrect={min_incorrect}, "
-          f"num_pairs_per_batch={num_pairs_per_batch}")
+          f"num_pairs_per_batch={num_pairs_per_batch}, pair_mode={pair_mode}, "
+          f"max_pairs_per_example={max_pairs_per_example}")
 
     result_prompts = []
     result_chosen = []
@@ -239,40 +260,52 @@ def generate_pairs(
     total_correct_all = 0
     total_incorrect_all = 0
 
-    for batch_idx in tqdm(range(num_batches), desc="Generating pairs"):
+    desc = "Building pairs from gold rollouts" if use_gold else "Generating pairs"
+    for batch_idx in tqdm(range(num_batches), desc=desc):
         start = batch_idx * batch_size
         end = min(start + batch_size, len(all_prompts))
         batch_prompts = all_prompts[start:end]
         batch_gold_values = all_gold_values[start:end]
 
-        batch_completions = generate_batch(
-            model, tokenizer, batch_prompts, gen_cfg,
-            num_return_sequences=num_gen,
-        )
-
-        # Score completions and partition into correct/incorrect per example
         batch_total_correct = 0
         batch_total_incorrect = 0
         per_example: list[dict] = []
 
-        for prompt, completions, gold_value in zip(
-            batch_prompts, batch_completions, batch_gold_values
-        ):
-            correct = []
-            incorrect = []
-            for comp in completions:
-                extracted = task.extract_answer(comp)
-                if task.check_answer(extracted, gold_value):
-                    correct.append(comp)
-                else:
-                    incorrect.append(comp)
-            batch_total_correct += len(correct)
-            batch_total_incorrect += len(incorrect)
-            per_example.append({
-                "prompt": prompt,
-                "correct": correct,
-                "incorrect": incorrect,
-            })
+        if use_gold:
+            batch_rollouts = gold_rollouts[start:end]
+            for prompt, rollouts in zip(batch_prompts, batch_rollouts):
+                correct = [r["response"] for r in rollouts if r["correct"]]
+                incorrect = [r["response"] for r in rollouts if not r["correct"]]
+                batch_total_correct += len(correct)
+                batch_total_incorrect += len(incorrect)
+                per_example.append({
+                    "prompt": prompt,
+                    "correct": correct,
+                    "incorrect": incorrect,
+                })
+        else:
+            batch_completions = generate_batch(
+                model, tokenizer, batch_prompts, gen_cfg,
+                num_return_sequences=num_gen,
+            )
+            for prompt, completions, gold_value in zip(
+                batch_prompts, batch_completions, batch_gold_values
+            ):
+                correct = []
+                incorrect = []
+                for comp in completions:
+                    extracted = task.extract_answer(comp)
+                    if task.check_answer(extracted, gold_value):
+                        correct.append(comp)
+                    else:
+                        incorrect.append(comp)
+                batch_total_correct += len(correct)
+                batch_total_incorrect += len(incorrect)
+                per_example.append({
+                    "prompt": prompt,
+                    "correct": correct,
+                    "incorrect": incorrect,
+                })
 
         total_correct_all += batch_total_correct
         total_incorrect_all += batch_total_incorrect
@@ -281,22 +314,33 @@ def generate_pairs(
             batches_skipped += 1
             continue
 
-        # Build candidate pairs: each pair shares the same prompt
+        # Build candidate pairs with R/2 cap per example
         candidate_pairs = []
         for ex in per_example:
             if ex["correct"] and ex["incorrect"]:
-                for c in ex["correct"]:
-                    for i in ex["incorrect"]:
-                        candidate_pairs.append((ex["prompt"], c, i))
+                ex_pairs = [(ex["prompt"], c, i) for c in ex["correct"] for i in ex["incorrect"]]
+                if len(ex_pairs) > max_pairs_per_example:
+                    ex_pairs = random.sample(ex_pairs, max_pairs_per_example)
+                candidate_pairs.extend(ex_pairs)
 
         if not candidate_pairs:
             batches_skipped += 1
             continue
 
-        if len(candidate_pairs) >= num_pairs_per_batch:
-            sampled = random.sample(candidate_pairs, num_pairs_per_batch)
+        if pair_mode == "per_example":
+            # Naive DPO: exactly 1 pair per example that has both correct and incorrect
+            sampled = []
+            for ex in per_example:
+                if ex["correct"] and ex["incorrect"]:
+                    c = random.choice(ex["correct"])
+                    i = random.choice(ex["incorrect"])
+                    sampled.append((ex["prompt"], c, i))
         else:
-            sampled = random.choices(candidate_pairs, k=num_pairs_per_batch)
+            # Pooled mode: sample num_pairs_per_batch from the full candidate pool
+            if len(candidate_pairs) >= num_pairs_per_batch:
+                sampled = random.sample(candidate_pairs, num_pairs_per_batch)
+            else:
+                sampled = random.choices(candidate_pairs, k=num_pairs_per_batch)
 
         for prompt, chosen, rejected in sampled:
             result_prompts.append(prompt)
@@ -339,6 +383,8 @@ def generate_pairs(
             "min_correct": min_correct,
             "min_incorrect": min_incorrect,
             "num_pairs_per_batch": num_pairs_per_batch,
+            "pair_mode": pair_mode,
+            "max_pairs_per_example": max_pairs_per_example,
         }, f, indent=2)
 
     return pairs_data
@@ -352,6 +398,8 @@ def main():
                         help="Format prompts with the model's chat template")
     parser.add_argument("--output_dir", type=str, default=None,
                         help="Directory to save the fine-tuned model (auto-generated if not provided)")
+    parser.add_argument("--gold_data_path", type=str, default=None,
+                        help="Path to gold_data.json; if provided, train on the selected gold data instead of the full training set")
     args = parser.parse_args()
 
     cfg = _FROZEN_CONFIG
@@ -373,6 +421,7 @@ def main():
             "task": args.task,
             "use_chat_template": args.use_chat_template,
             "output_dir": args.output_dir,
+            "gold_data_path": args.gold_data_path,
         }
     )
 
@@ -393,7 +442,29 @@ def main():
 
     print(f"Loading task: {args.task}")
     task = get_task(args.task)
-    train_samples = task.load_train()
+
+    gold_rollouts = None
+    if args.gold_data_path:
+        from tasks.base import Sample
+        print(f"Loading gold data from: {args.gold_data_path}")
+        with open(args.gold_data_path) as f:
+            gold = json.load(f)
+        train_samples = [
+            Sample(
+                question=entry["question"],
+                answer=entry["gold_answer"],
+                answer_value=entry.get("gold_value"),
+            )
+            for entry in gold["data"]
+        ]
+        # Extract pre-scored rollouts (each entry has rollouts with correct/incorrect labels)
+        if gold["data"] and "rollouts" in gold["data"][0]:
+            gold_rollouts = [entry["rollouts"] for entry in gold["data"]]
+            print(f"Gold data includes {gold['data'][0]['num_rollouts']} pre-scored rollouts per question")
+        print(f"Gold data: {gold['selected_questions']} questions "
+              f"(from {gold['total_questions']} total, {gold['eligible_questions']} eligible)")
+    else:
+        train_samples = task.load_train()
     print(f"Training samples: {len(train_samples)}")
 
     # Phase 1: Generate preference pairs (or load cached)
@@ -407,6 +478,7 @@ def main():
         dpo_cfg=dpo_cfg,
         output_dir=args.output_dir,
         batch_size=dpo_cfg.get("generation_batch_size", 8),
+        gold_rollouts=gold_rollouts,
     )
 
     dataset = Dataset.from_dict(pairs)

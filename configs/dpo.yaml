@@ -2,7 +2,7 @@
 
 model:
   name: "Qwen/Qwen2.5-3B-Instruct"
-  device: [3, 5]
+  device: [4, 6]
 
 training:
   num_epochs: 1
@@ -30,3 +30,4 @@ dpo:
   min_correct: 8               # min correct completions across batch to keep it
   min_incorrect: 8             # min incorrect completions across batch to keep it
   num_pairs_per_batch: 32      # pairs to sample from each valid batch
+  pair_mode: "pooled"          # "pooled" (sample from cross-batch pool) or "per_example" (1 pair per example)

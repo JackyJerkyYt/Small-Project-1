@@ -21,6 +21,12 @@ import sys
 from dataclasses import dataclass
 
 
+GOLD_DATA_PATHS = {
+    True: "results/gold_data/chat_template/gold_data.json",
+    False: "results/gold_data/no_chat_template/gold_data.json",
+}
+
+
 @dataclass
 class Experiment:
     name: str
@@ -28,6 +34,7 @@ class Experiment:
     use_chat_template: bool
     mask_question: bool  # only relevant for SFT without chat template
     description: str
+    config: str | None = None  # override default config path for this method
 
 
 ALL_EXPERIMENTS = [
@@ -76,13 +83,14 @@ ALL_EXPERIMENTS = [
         mask_question=True,
         description="SFT with chat template, loss on answer only",
     ),
-    # --- DPO ---
+    # --- DPO (current / data-diverse) ---
     Experiment(
         name="dpo_chat_template",
         method="dpo",
         use_chat_template=True,
         mask_question=False,
         description="DPO with chat template",
+        config="configs/dpo.yaml",
     ),
     Experiment(
         name="dpo_no_chat",
@@ -90,6 +98,41 @@ ALL_EXPERIMENTS = [
         use_chat_template=False,
         mask_question=False,
         description="DPO without chat template",
+        config="configs/dpo.yaml",
+    ),
+    # --- DPO naive (1 pair per example) ---
+    Experiment(
+        name="dpo_naive_chat_template",
+        method="dpo",
+        use_chat_template=True,
+        mask_question=False,
+        description="DPO naive with chat template",
+        config="configs/dpo_naive.yaml",
+    ),
+    Experiment(
+        name="dpo_naive_no_chat",
+        method="dpo",
+        use_chat_template=False,
+        mask_question=False,
+        description="DPO naive without chat template",
+        config="configs/dpo_naive.yaml",
+    ),
+    # --- DPO akshat (1 example, 64 rollouts) ---
+    Experiment(
+        name="dpo_akshat_chat_template",
+        method="dpo",
+        use_chat_template=True,
+        mask_question=False,
+        description="DPO akshat with chat template",
+        config="configs/dpo_akshat.yaml",
+    ),
+    Experiment(
+        name="dpo_akshat_no_chat",
+        method="dpo",
+        use_chat_template=False,
+        mask_question=False,
+        description="DPO akshat without chat template",
+        config="configs/dpo_akshat.yaml",
     ),
 ]
 
@@ -105,15 +148,22 @@ def run_cmd(cmd: list[str], description: str) -> int:
     return result.returncode
 
 
+def _default_config(method: str) -> str:
+    return f"configs/{method}.yaml"
+
+
 def run_training(exp: Experiment, task: str, base_dir: str):
     model_dir = os.path.join(base_dir, "models", exp.name)
+    config_path = exp.config or _default_config(exp.method)
+    gold_data_path = GOLD_DATA_PATHS[exp.use_chat_template]
 
     if exp.method == "sft":
         cmd = [
             sys.executable, "-m", "src.train_sft",
-            "--config", "configs/sft.yaml",
+            "--config", config_path,
             "--task", task,
             "--output_dir", model_dir,
+            "--gold_data_path", gold_data_path,
         ]
         if exp.use_chat_template:
             cmd.append("--use_chat_template")
@@ -122,18 +172,20 @@ def run_training(exp: Experiment, task: str, base_dir: str):
     elif exp.method == "grpo":
         cmd = [
             sys.executable, "-m", "src.train_grpo",
-            "--config", "configs/grpo.yaml",
+            "--config", config_path,
             "--task", task,
             "--output_dir", model_dir,
+            "--gold_data_path", gold_data_path,
         ]
         if exp.use_chat_template:
             cmd.append("--use_chat_template")
     elif exp.method == "dpo":
         cmd = [
             sys.executable, "-m", "src.train_dpo",
-            "--config", "configs/dpo.yaml",
+            "--config", config_path,
             "--task", task,
             "--output_dir", model_dir,
+            "--gold_data_path", gold_data_path,
         ]
         if exp.use_chat_template:
             cmd.append("--use_chat_template")
@@ -216,14 +268,18 @@ Examples:
   python run_experiments.py --task gsm8k --only_report
 
 Available experiments:
-  sft_chat_template       - SFT with chat template
-  grpo_chat_template      - GRPO with chat template
-  sft_no_chat_full_loss   - SFT without chat template (full loss)
-  sft_no_chat_mask_q      - SFT without chat template (answer-only loss)
-  sft_chat_mask_q         - SFT with chat template (answer-only loss)
-  grpo_no_chat            - GRPO without chat template
-  dpo_chat_template       - DPO with chat template
-  dpo_no_chat             - DPO without chat template
+  sft_chat_template           - SFT with chat template
+  grpo_chat_template          - GRPO with chat template
+  sft_no_chat_full_loss       - SFT without chat template (full loss)
+  sft_no_chat_mask_q          - SFT without chat template (answer-only loss)
+  sft_chat_mask_q             - SFT with chat template (answer-only loss)
+  grpo_no_chat                - GRPO without chat template
+  dpo_chat_template           - DPO (data-diverse) with chat template
+  dpo_no_chat                 - DPO (data-diverse) without chat template
+  dpo_naive_chat_template     - DPO naive (1 pair/example) with chat template
+  dpo_naive_no_chat           - DPO naive (1 pair/example) without chat template
+  dpo_akshat_chat_template    - DPO akshat (64 rollouts/question) with chat template
+  dpo_akshat_no_chat          - DPO akshat (64 rollouts/question) without chat template
         """,
     )
     parser.add_argument("--task", type=str, default="gsm8k", help="Task name")
