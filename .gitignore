@@ -3,3 +3,4 @@
 /results_qwen2.5
 __pycache__/
 *.pyc
+/results/gsm8k/models/

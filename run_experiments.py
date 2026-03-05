@@ -91,6 +91,21 @@ ALL_EXPERIMENTS = [
         mask_question=False,
         description="DPO without chat template",
     ),
+    # --- SDFT (Self-Distillation Fine-Tuning) ---
+    Experiment(
+        name="sdft_chat_template",
+        method="sdft",
+        use_chat_template=True,
+        mask_question=False,
+        description="SDFT with chat template",
+    ),
+    Experiment(
+        name="sdft_no_chat",
+        method="sdft",
+        use_chat_template=False,
+        mask_question=False,
+        description="SDFT without chat template",
+    ),
 ]
 
 
@@ -132,6 +147,15 @@ def run_training(exp: Experiment, task: str, base_dir: str):
         cmd = [
             sys.executable, "-m", "src.train_dpo",
             "--config", "configs/dpo.yaml",
+            "--task", task,
+            "--output_dir", model_dir,
+        ]
+        if exp.use_chat_template:
+            cmd.append("--use_chat_template")
+    elif exp.method == "sdft":
+        cmd = [
+            sys.executable, "-m", "src.train_sdft",
+            "--config", "configs/sdft.yaml",
             "--task", task,
             "--output_dir", model_dir,
         ]
@@ -221,6 +245,8 @@ Available experiments:
   grpo_no_chat            - GRPO without chat template
   dpo_chat_template       - DPO with chat template
   dpo_no_chat             - DPO without chat template
+  sdft_chat_template      - SDFT with chat template
+  sdft_no_chat            - SDFT without chat template
         """,
     )
     parser.add_argument("--task", type=str, default="gsm8k", help="Task name")

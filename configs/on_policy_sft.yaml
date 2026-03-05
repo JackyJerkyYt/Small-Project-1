@@ -1,5 +1,6 @@
-# SFT (Supervised Fine-Tuning) Configuration
-# -------------------------------------------
+# On-Policy SFT Configuration
+# ----------------------------
+# At each step: generate N rollouts, keep correct ones, SFT on them.
 
 model:
   # Qwen2.5-3B-Instruct model
@@ -7,9 +8,8 @@ model:
   # GPU selection (sets CUDA_VISIBLE_DEVICES before importing torch):
   #   - "auto": use all available GPUs (default)
   #   - "cuda:0": use only GPU 0
-  #   - "cuda:2": use only GPU 2
   #   - [2, 7]: use GPUs 2 and 7 for model parallelism
-  device: [5]
+  device: [3]
 
 training:
   num_epochs: 1
@@ -19,9 +19,14 @@ training:
   weight_decay: 0.01
   warmup_ratio: 0.1
   lr_scheduler_type: "cosine"
-  max_seq_length: 1024       # set high to avoid truncation; Qwen3 supports 32K
+  max_seq_length: 1024
   bf16: true
   logging_steps: 10
   save_strategy: "epoch"
   seed: 42
   gradient_checkpointing: true
+
+generation:
+  num_rollouts: 15          # number of rollouts per question per step
+  max_new_tokens: 1024     # max tokens per rollout
+  temperature: 0.7         # sampling temperature for rollout diversity
