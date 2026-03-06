@@ -2,16 +2,13 @@
 """
 Master experiment runner.
 
-This script runs all combinations of:
-  - Training format: chat_template vs no_chat_template
-  - Training method: SFT vs GRPO vs DPO
-  - Masking (for no_chat_template SFT only): full loss vs mask question
-  - Evaluation format: chat_template vs no_chat_template
+Runs chat-template training + evaluation for each method (SFT, GRPO, DPO variants).
 
 Usage:
     python run_experiments.py --task gsm8k
-    python run_experiments.py --task gsm8k --only_eval   # skip training, just evaluate
-    python run_experiments.py --task gsm8k --experiments sft_chat grpo_no_chat
+    python run_experiments.py --task math
+    python run_experiments.py --task math --only_eval
+    python run_experiments.py --task math --experiments sft_chat_template grpo_chat_template
 """
 
 import argparse
@@ -21,10 +18,8 @@ import sys
 from dataclasses import dataclass
 
 
-GOLD_DATA_PATHS = {
-    True: "results/gold_data/chat_template/gold_data.json",
-    False: "results/gold_data/no_chat_template/gold_data.json",
-}
+def gold_data_path(task: str) -> str:
+    return f"results/gold_data/chat_template/{task}/gold_data.json"
 
 
 @dataclass
@@ -38,7 +33,6 @@ class Experiment:
 
 
 ALL_EXPERIMENTS = [
-    # --- With chat template ---
     Experiment(
         name="sft_chat_template",
         method="sft",
@@ -47,43 +41,19 @@ ALL_EXPERIMENTS = [
         description="SFT with chat template",
     ),
     Experiment(
-        name="grpo_chat_template",
-        method="grpo",
-        use_chat_template=True,
-        mask_question=False,
-        description="GRPO with chat template",
-    ),
-    # --- Without chat template, full loss (question + answer) ---
-    Experiment(
-        name="sft_no_chat_full_loss",
-        method="sft",
-        use_chat_template=False,
-        mask_question=False,
-        description="SFT without chat template, loss on question+answer",
-    ),
-    Experiment(
-        name="grpo_no_chat",
-        method="grpo",
-        use_chat_template=False,
-        mask_question=False,
-        description="GRPO without chat template",
-    ),
-    # --- Without chat template, masked question (answer-only loss) ---
-    Experiment(
-        name="sft_no_chat_mask_q",
-        method="sft",
-        use_chat_template=False,
-        mask_question=True,
-        description="SFT without chat template, loss on answer only (question masked)",
-    ),
-    Experiment(
         name="sft_chat_mask_q",
         method="sft",
         use_chat_template=True,
         mask_question=True,
         description="SFT with chat template, loss on answer only",
     ),
-    # --- DPO (current / data-diverse) ---
+    Experiment(
+        name="grpo_chat_template",
+        method="grpo",
+        use_chat_template=True,
+        mask_question=False,
+        description="GRPO with chat template",
+    ),
     Experiment(
         name="dpo_chat_template",
         method="dpo",
@@ -93,15 +63,6 @@ ALL_EXPERIMENTS = [
         config="configs/dpo.yaml",
     ),
     Experiment(
-        name="dpo_no_chat",
-        method="dpo",
-        use_chat_template=False,
-        mask_question=False,
-        description="DPO without chat template",
-        config="configs/dpo.yaml",
-    ),
-    # --- DPO naive (1 pair per example) ---
-    Experiment(
         name="dpo_naive_chat_template",
         method="dpo",
         use_chat_template=True,
@@ -110,28 +71,11 @@ ALL_EXPERIMENTS = [
         config="configs/dpo_naive.yaml",
     ),
     Experiment(
-        name="dpo_naive_no_chat",
-        method="dpo",
-        use_chat_template=False,
-        mask_question=False,
-        description="DPO naive without chat template",
-        config="configs/dpo_naive.yaml",
-    ),
-    # --- DPO akshat (1 example, 64 rollouts) ---
-    Experiment(
         name="dpo_akshat_chat_template",
         method="dpo",
         use_chat_template=True,
         mask_question=False,
         description="DPO akshat with chat template",
-        config="configs/dpo_akshat.yaml",
-    ),
-    Experiment(
-        name="dpo_akshat_no_chat",
-        method="dpo",
-        use_chat_template=False,
-        mask_question=False,
-        description="DPO akshat without chat template",
         config="configs/dpo_akshat.yaml",
     ),
 ]
@@ -155,53 +99,34 @@ def _default_config(method: str) -> str:
 def run_training(exp: Experiment, task: str, base_dir: str):
     model_dir = os.path.join(base_dir, "models", exp.name)
     config_path = exp.config or _default_config(exp.method)
-    gold_data_path = GOLD_DATA_PATHS[exp.use_chat_template]
+    gdp = gold_data_path(task)
 
-    if exp.method == "sft":
-        cmd = [
-            sys.executable, "-m", "src.train_sft",
-            "--config", config_path,
-            "--task", task,
-            "--output_dir", model_dir,
-            "--gold_data_path", gold_data_path,
-        ]
-        if exp.use_chat_template:
-            cmd.append("--use_chat_template")
-        if exp.mask_question:
-            cmd.append("--mask_question")
-    elif exp.method == "grpo":
-        cmd = [
-            sys.executable, "-m", "src.train_grpo",
-            "--config", config_path,
-            "--task", task,
-            "--output_dir", model_dir,
-            "--gold_data_path", gold_data_path,
-        ]
-        if exp.use_chat_template:
-            cmd.append("--use_chat_template")
-    elif exp.method == "dpo":
-        cmd = [
-            sys.executable, "-m", "src.train_dpo",
-            "--config", config_path,
-            "--task", task,
-            "--output_dir", model_dir,
-            "--gold_data_path", gold_data_path,
-        ]
-        if exp.use_chat_template:
-            cmd.append("--use_chat_template")
-    else:
+    train_module = {
+        "sft": "src.train_sft",
+        "grpo": "src.train_grpo",
+        "dpo": "src.train_dpo",
+    }
+    if exp.method not in train_module:
         raise ValueError(f"Unknown method: {exp.method}")
+
+    cmd = [
+        sys.executable, "-m", train_module[exp.method],
+        "--config", config_path,
+        "--task", task,
+        "--output_dir", model_dir,
+        "--gold_data_path", gdp,
+        "--use_chat_template",
+    ]
+    if exp.mask_question:
+        cmd.append("--mask_question")
 
     return run_cmd(cmd, f"TRAIN: {exp.description}")
 
 
-def run_evaluation(exp: Experiment, task: str, base_dir: str, eval_with_chat: bool,
+def run_evaluation(exp: Experiment, task: str, base_dir: str,
                    extra_kwargs: str, max_samples: int | None = None):
     model_dir = os.path.join(base_dir, "models", exp.name)
-    eval_suffix = "eval_chat" if eval_with_chat else "eval_raw"
-    eval_dir = os.path.join(base_dir, "eval", f"{exp.name}_{eval_suffix}")
-
-    desc = f"EVAL: {exp.description} → eval {'with' if eval_with_chat else 'without'} chat template"
+    eval_dir = os.path.join(base_dir, "eval", f"{exp.name}_eval_chat")
 
     cmd = [
         sys.executable, "-m", "src.evaluate",
@@ -212,17 +137,15 @@ def run_evaluation(exp: Experiment, task: str, base_dir: str, eval_with_chat: bo
         "--extra_chat_template_kwargs", extra_kwargs,
         "--experiment_name", exp.name,
         "--train_method", exp.method,
+        "--use_chat_template",
+        "--train_chat_template",
     ]
-    if eval_with_chat:
-        cmd.append("--use_chat_template")
-    if exp.use_chat_template:
-        cmd.append("--train_chat_template")
     if exp.mask_question:
         cmd.append("--train_mask_question")
     if max_samples is not None:
         cmd.extend(["--max_samples", str(max_samples)])
 
-    return run_cmd(cmd, desc)
+    return run_cmd(cmd, f"EVAL: {exp.description} → chat template")
 
 
 def run_report(base_dir: str):
@@ -251,35 +174,23 @@ def run_report(base_dir: str):
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Run all fine-tuning + evaluation experiments",
+        description="Run chat-template fine-tuning + evaluation experiments",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  # Run everything for gsm8k
   python run_experiments.py --task gsm8k
-
-  # Only evaluate (models must already be trained)
-  python run_experiments.py --task gsm8k --only_eval
-
-  # Run only specific experiments
-  python run_experiments.py --task gsm8k --experiments sft_chat_template grpo_chat_template
-
-  # Only generate the comparison report
-  python run_experiments.py --task gsm8k --only_report
+  python run_experiments.py --task math
+  python run_experiments.py --task math --only_eval
+  python run_experiments.py --task math --experiments sft_chat_template grpo_chat_template
+  python run_experiments.py --task math --only_report
 
 Available experiments:
   sft_chat_template           - SFT with chat template
-  grpo_chat_template          - GRPO with chat template
-  sft_no_chat_full_loss       - SFT without chat template (full loss)
-  sft_no_chat_mask_q          - SFT without chat template (answer-only loss)
   sft_chat_mask_q             - SFT with chat template (answer-only loss)
-  grpo_no_chat                - GRPO without chat template
+  grpo_chat_template          - GRPO with chat template
   dpo_chat_template           - DPO (data-diverse) with chat template
-  dpo_no_chat                 - DPO (data-diverse) without chat template
   dpo_naive_chat_template     - DPO naive (1 pair/example) with chat template
-  dpo_naive_no_chat           - DPO naive (1 pair/example) without chat template
   dpo_akshat_chat_template    - DPO akshat (64 rollouts/question) with chat template
-  dpo_akshat_no_chat          - DPO akshat (64 rollouts/question) without chat template
         """,
     )
     parser.add_argument("--task", type=str, default="gsm8k", help="Task name")
@@ -320,9 +231,8 @@ Available experiments:
                 print(f"Training failed for {exp.name}. Skipping its evaluation.")
                 continue
 
-        for eval_with_chat in [True, False]:
-            run_evaluation(exp, args.task, base_dir, eval_with_chat,
-                           args.extra_chat_template_kwargs, args.max_eval_samples)
+        run_evaluation(exp, args.task, base_dir,
+                       args.extra_chat_template_kwargs, args.max_eval_samples)
 
     run_report(base_dir)
     print("\nAll done! Check the results in:", base_dir)

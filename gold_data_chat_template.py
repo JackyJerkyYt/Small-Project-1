@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 """Gold data extraction using chat template format (empty system prompt).
 
-Generates 8 rollouts per GSM8K training question, logs accuracy and responses
+Generates 8 rollouts per training question, logs accuracy and responses
 continuously to JSONL, then selects 1000 questions with the lowest accuracy
 (requiring 2-6 correct rollouts out of 8).
 
 Usage:
-    python gold_data_chat_template.py --gpu 0
-    python gold_data_chat_template.py --gpu 0 --batch_size 8
-    python gold_data_chat_template.py --gpu 0,1 --batch_size 8
+    python gold_data_chat_template.py --task gsm8k --gpu 0
+    python gold_data_chat_template.py --task math --gpu 0 --batch_size 8
+    python gold_data_chat_template.py --task math --gpu 0,1 --batch_size 8
 """
 
 import argparse
@@ -95,8 +95,10 @@ def main():
     parser = argparse.ArgumentParser(
         description="Gold data extraction with chat template (empty system prompt)"
     )
+    parser.add_argument("--task", type=str, default="gsm8k", help="Task name (e.g. gsm8k, math)")
     parser.add_argument("--model_name", type=str, default="Qwen/Qwen2.5-3B-Instruct")
-    parser.add_argument("--output_dir", type=str, default="results/gold_data/chat_template")
+    parser.add_argument("--output_dir", type=str, default=None,
+                        help="Output dir (default: results/gold_data/chat_template/<task>)")
     parser.add_argument("--batch_size", type=int, default=4,
                         help="Number of questions per generate call")
     parser.add_argument("--num_rollouts", type=int, default=8)
@@ -107,6 +109,9 @@ def main():
     parser.add_argument("--min_correct", type=int, default=2)
     parser.add_argument("--max_correct", type=int, default=6)
     args = parser.parse_args()
+
+    if args.output_dir is None:
+        args.output_dir = f"results/gold_data/chat_template/{args.task}"
 
     os.makedirs(args.output_dir, exist_ok=True)
 
@@ -122,8 +127,8 @@ def main():
     model = AutoModelForCausalLM.from_pretrained(args.model_name, **model_kwargs)
     model.eval()
 
-    print("Loading GSM8K training data...")
-    task = get_task("gsm8k")
+    print(f"Loading {args.task} training data...")
+    task = get_task(args.task)
     train_samples = task.load_train()
     print(f"Total training examples: {len(train_samples)}")
 
@@ -246,6 +251,7 @@ def main():
         json.dump(
             {
                 "config": {
+                    "task": args.task,
                     "model_name": args.model_name,
                     "num_rollouts": args.num_rollouts,
                     "temperature": args.temperature,
