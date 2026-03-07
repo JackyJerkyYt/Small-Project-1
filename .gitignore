@@ -1,5 +1,6 @@
 /.cursor
 /.venv
-/results*
+/results/gsm8k/
+/results/math/
 __pycache__/
 *.pyc

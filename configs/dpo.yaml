@@ -2,7 +2,7 @@
 
 model:
   name: "Qwen/Qwen2.5-3B-Instruct"
-  device: [4, 6]
+  device: [0, 7]
 
 training:
   num_epochs: 1
