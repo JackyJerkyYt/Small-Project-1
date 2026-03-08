@@ -247,9 +247,9 @@ def main():
     # transformers detects mismatches at training time and emits the PAD/BOS/EOS
     # warning; the alignment also rewrites generation_config fields non-atomically,
     # which can clobber the multi-token eos_ids list we rely on for correct stopping.
-    model.config.eos_token_id = tokenizer.eos_token_id
-    model.config.bos_token_id = tokenizer.bos_token_id
-    model.config.pad_token_id = tokenizer.pad_token_id
+    if not hasattr(model.config, "pad_token_id") or model.config.pad_token_id is None:
+        model.config.pad_token_id = tokenizer.pad_token_id
+    model.config.bos_token_id = getattr(tokenizer, "bos_token_id", None)
     model.generation_config.eos_token_id = eos_ids   # preserve the full list
     model.generation_config.bos_token_id = tokenizer.bos_token_id
     model.generation_config.pad_token_id = tokenizer.pad_token_id

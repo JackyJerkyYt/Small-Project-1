@@ -265,12 +265,14 @@ def main():
         model_kwargs["attn_implementation"] = attn_impl
     model = AutoModelForCausalLM.from_pretrained(model_name, **model_kwargs)
 
-    model.config.eos_token_id = tokenizer.eos_token_id
-    model.config.bos_token_id = tokenizer.bos_token_id
-    model.config.pad_token_id = tokenizer.pad_token_id
+    if not hasattr(model.config, "pad_token_id") or model.config.pad_token_id is None:
+        model.config.pad_token_id = tokenizer.pad_token_id
+    model.config.bos_token_id = getattr(tokenizer, "bos_token_id", None)
+    
     if hasattr(model, "generation_config") and model.generation_config is not None:
-        model.generation_config.bos_token_id = tokenizer.bos_token_id
-        model.generation_config.pad_token_id = tokenizer.pad_token_id
+        model.generation_config.bos_token_id = getattr(tokenizer, "bos_token_id", None)
+        if model.generation_config.pad_token_id is None:
+            model.generation_config.pad_token_id = tokenizer.pad_token_id
 
     # ---- Load data ----
     print(f"Loading task: {args.task}")
@@ -352,6 +354,7 @@ def main():
     log_hits = 0
     log_total = 0
     log_count = 0
+    log_examples = []
 
     for epoch in range(num_epochs):
         indices = list(range(len(train_samples)))
@@ -392,8 +395,11 @@ def main():
                 for completion in completions:
                     extracted = task.extract_answer(completion)
                     if task.check_answer(extracted, gold):
-                        sft_pairs.append({"question": sample.question, "answer": completion})
+                        sft_pairs.append({"question": sample.question, "answer": completion, "extracted": extracted, "gold": gold})
                         break
+
+            if len(log_examples) < 2 and sft_pairs:
+                log_examples.extend(sft_pairs[:2 - len(log_examples)])
 
             log_hits += len(sft_pairs)
             log_total += len(batch_samples)
@@ -453,13 +459,15 @@ def main():
                         "lr": lr,
                         "hits": log_hits,
                         "total_questions": log_total,
+                        "examples": log_examples
                     }
-                    train_log_file.write(json.dumps(log_entry) + "\n")
+                    train_log_file.write(json.dumps(log_entry) + "\\n")
                     train_log_file.flush()
                     log_loss = 0.0
                     log_hits = 0
                     log_total = 0
                     log_count = 0
+                    log_examples = []
 
             pbar.set_postfix({
                 "hits": f"{len(sft_pairs)}/{len(batch_samples)}",

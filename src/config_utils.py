@@ -53,6 +53,18 @@ KNOWN_KEYS = {
             "min_correct", "min_incorrect", "num_pairs_per_batch", "pair_mode",
         },
     },
+    "sdft": {
+        "model": {"name", "extra_chat_template_kwargs", "student_device", "teacher_device", "device"},
+        "training": {
+            "num_epochs", "per_device_train_batch_size", "gradient_accumulation_steps",
+            "learning_rate", "weight_decay", "warmup_ratio", "lr_scheduler_type",
+            "max_seq_length", "bf16", "logging_steps", "save_strategy", "seed",
+            "gradient_checkpointing",
+        },
+        "sdft": {
+            "ema_decay", "max_new_tokens", "temperature",
+        },
+    },
 }
 
 

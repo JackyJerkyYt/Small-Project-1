@@ -4,3 +4,4 @@
 /results/math/
 __pycache__/
 *.pyc
+/results/gsm8k/models/

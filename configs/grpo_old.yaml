@@ -9,7 +9,7 @@ model:
   #   - "cuda:0": use only GPU 0
   #   - "cuda:2": use only GPU 2
   #   - [2, 7]: use GPUs 2 and 7 for model parallelism
-  device: [0, 1, 5]
+  device: "cuda:0"
 
 training:
   num_epochs: 1

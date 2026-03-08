@@ -2,7 +2,7 @@
 # ------------------------
 
 generation:
-  max_new_tokens: 512       # set high to avoid truncation during generation
+  max_new_tokens: 2048      # competition math needs long chain-of-thought
   temperature: 0.0
   do_sample: false
 
@@ -17,4 +17,4 @@ eval:
   #   - "cuda:0": use only GPU 0
   #   - "cuda:2": use only GPU 2
   #   - [2, 7]: use GPUs 2 and 7 for model parallelism
-  device: [0, 7]
+  device: "cuda:0"

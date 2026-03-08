@@ -78,6 +78,21 @@ ALL_EXPERIMENTS = [
         description="DPO akshat with chat template",
         config="configs/dpo_akshat.yaml",
     ),
+    # --- SDFT (Self-Distillation Fine-Tuning) ---
+    Experiment(
+        name="sdft_chat_template",
+        method="sdft",
+        use_chat_template=True,
+        mask_question=False,
+        description="SDFT with chat template",
+    ),
+    Experiment(
+        name="sdft_no_chat",
+        method="sdft",
+        use_chat_template=False,
+        mask_question=False,
+        description="SDFT without chat template",
+    ),
 ]
 
 
@@ -105,6 +120,7 @@ def run_training(exp: Experiment, task: str, base_dir: str):
         "sft": "src.train_sft",
         "grpo": "src.train_grpo",
         "dpo": "src.train_dpo",
+        "sdft": "src.train_sdft",
     }
     if exp.method not in train_module:
         raise ValueError(f"Unknown method: {exp.method}")
@@ -191,6 +207,8 @@ Available experiments:
   dpo_chat_template           - DPO (data-diverse) with chat template
   dpo_naive_chat_template     - DPO naive (1 pair/example) with chat template
   dpo_akshat_chat_template    - DPO akshat (64 rollouts/question) with chat template
+  sdft_chat_template          - SDFT with chat template
+  sdft_no_chat                - SDFT without chat template
         """,
     )
     parser.add_argument("--task", type=str, default="gsm8k", help="Task name")

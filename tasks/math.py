@@ -40,8 +40,72 @@ def _extract_boxed(text: str) -> str | None:
 
 
 def _normalize_answer(s: str) -> str:
-    """Normalize for comparison: strip whitespace and collapse spaces."""
-    return " ".join(s.strip().split())
+    """Normalize a LaTeX math answer string for robust comparison.
+
+    Follows conventions from the MATH benchmark grading scripts:
+    strip cosmetic LaTeX wrappers, unify fraction commands, remove
+    spacing commands, etc.
+    """
+    s = s.strip()
+
+    # Unify fraction variants
+    s = s.replace("\\dfrac", "\\frac")
+    s = s.replace("\\tfrac", "\\frac")
+
+    # Remove \left / \right (purely cosmetic sizing)
+    s = s.replace("\\left", "")
+    s = s.replace("\\right", "")
+
+    # Remove LaTeX spacing commands
+    for cmd in ("\\!", "\\,", "\\;", "\\:", "\\quad", "\\qquad", "\\ "):
+        s = s.replace(cmd, "")
+
+    # Unwrap text-style commands: \text{...} → ..., etc.
+    s = re.sub(r"\\(?:text|textbf|textit|textrm|mathrm|mathbf|operatorname)\s*\{([^}]*)\}", r"\1", s)
+
+    # Strip dollar signs and stray percent signs used as literals
+    s = s.replace("$", "")
+    s = s.replace("\\%", "")
+
+    # Collapse whitespace
+    s = " ".join(s.split())
+    return s
+
+
+def _try_parse_number(s: str) -> float | None:
+    """Try to parse a string as a number, return None on failure."""
+    s = s.replace(",", "").strip()
+    try:
+        return float(s)
+    except ValueError:
+        return None
+
+
+def _is_equiv(a: str, b: str) -> bool:
+    """Check if two normalized answer strings are equivalent."""
+    if a == b:
+        return True
+
+    # Numeric fallback: "0.5" == "1/2" == ".5"
+    na, nb = _try_parse_number(a), _try_parse_number(b)
+    if na is not None and nb is not None:
+        return abs(na - nb) < 1e-8
+
+    # Simple fraction evaluation: \frac{p}{q} → p/q
+    frac_re = re.compile(r"^\\frac\s*\{([^}]+)\}\s*\{([^}]+)\}$")
+    ma, mb = frac_re.match(a), frac_re.match(b)
+    vals = []
+    for s, m in [(a, ma), (b, mb)]:
+        if m:
+            num = _try_parse_number(m.group(1))
+            den = _try_parse_number(m.group(2))
+            vals.append(num / den if num is not None and den and den != 0 else None)
+        else:
+            vals.append(_try_parse_number(s))
+    if vals[0] is not None and vals[1] is not None:
+        return abs(vals[0] - vals[1]) < 1e-8
+
+    return False
 
 
 class MATHTask(Task):
@@ -51,8 +115,6 @@ class MATHTask(Task):
         return "math"
 
     def _load_split(self, split: str) -> list[Sample]:
-        # Use EleutherAI mirror (hendrycks/competition_math is no longer on the Hub).
-        # Dataset is split by subject; load all configs and concatenate.
         parts = [
             load_dataset("EleutherAI/hendrycks_math", subj, split=split)
             for subj in MATH_SUBJECTS
@@ -85,4 +147,4 @@ class MATHTask(Task):
         gold_value = _extract_boxed(gold) if "\\boxed" in gold else gold
         if extracted is None or gold_value is None:
             return False
-        return _normalize_answer(extracted) == _normalize_answer(gold_value)
+        return _is_equiv(_normalize_answer(extracted), _normalize_answer(gold_value))

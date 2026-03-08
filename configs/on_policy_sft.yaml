@@ -1,5 +1,6 @@
-# GRPO (Group Relative Policy Optimization) Configuration
-# -------------------------------------------------------
+# On-Policy SFT Configuration
+# ----------------------------
+# At each step: generate N rollouts, keep correct ones, SFT on them.
 
 model:
   # Qwen2.5-3B-Instruct model
@@ -7,27 +8,25 @@ model:
   # GPU selection (sets CUDA_VISIBLE_DEVICES before importing torch):
   #   - "auto": use all available GPUs (default)
   #   - "cuda:0": use only GPU 0
-  #   - "cuda:2": use only GPU 2
   #   - [2, 7]: use GPUs 2 and 7 for model parallelism
   device: "cuda:0"
 
 training:
-  max_train_samples: 500  # null = use all; set integer to limit
   num_epochs: 1
   per_device_train_batch_size: 2
-  gradient_accumulation_steps: 32
-  learning_rate: 5.0e-6
+  gradient_accumulation_steps: 1
+  learning_rate: 2.0e-5
   weight_decay: 0.01
   warmup_ratio: 0.1
   lr_scheduler_type: "cosine"
+  max_seq_length: 1024
   bf16: true
   logging_steps: 10
   save_strategy: "epoch"
   seed: 42
   gradient_checkpointing: true
 
-grpo:
-  num_generations: 8
-  max_new_tokens: 1024       # max tokens the model can generate per completion
-  temperature: 0.7
-  beta: 0  # KL penalty coefficient, try 0 too
+generation:
+  num_rollouts: 8          # number of rollouts per question per step
+  max_new_tokens: 1024     # max tokens per rollout
+  temperature: 0.7         # sampling temperature for rollout diversity
