@@ -423,12 +423,13 @@ def main():
     student_model = AutoModelForCausalLM.from_pretrained(model_name, **student_kwargs)
     student_model = student_model.to(student_device)
 
-    student_model.config.eos_token_id = tokenizer.eos_token_id
-    student_model.config.bos_token_id = tokenizer.bos_token_id
-    student_model.config.pad_token_id = tokenizer.pad_token_id
+    if not hasattr(student_model.config, "pad_token_id") or student_model.config.pad_token_id is None:
+        student_model.config.pad_token_id = tokenizer.pad_token_id
+    student_model.config.bos_token_id = getattr(tokenizer, "bos_token_id", None)
     if hasattr(student_model, "generation_config") and student_model.generation_config is not None:
-        student_model.generation_config.bos_token_id = tokenizer.bos_token_id
-        student_model.generation_config.pad_token_id = tokenizer.pad_token_id
+        student_model.generation_config.bos_token_id = getattr(tokenizer, "bos_token_id", None)
+        if student_model.generation_config.pad_token_id is None:
+            student_model.generation_config.pad_token_id = tokenizer.pad_token_id
 
     # ---- Create EMA teacher model ----
     print("Creating EMA teacher model...")

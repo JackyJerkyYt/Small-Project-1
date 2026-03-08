@@ -9,11 +9,11 @@ model:
   #   - "auto": use all available GPUs (default)
   #   - "cuda:0": use only GPU 0
   #   - [2, 7]: use GPUs 2 and 7 for model parallelism
-  device: [3]
+  device: [7]
 
 training:
   num_epochs: 1
-  per_device_train_batch_size: 8
+  per_device_train_batch_size: 2
   gradient_accumulation_steps: 1
   learning_rate: 2.0e-5
   weight_decay: 0.01
@@ -27,6 +27,6 @@ training:
   gradient_checkpointing: true
 
 generation:
-  num_rollouts: 15          # number of rollouts per question per step
+  num_rollouts: 8          # number of rollouts per question per step
   max_new_tokens: 1024     # max tokens per rollout
   temperature: 0.7         # sampling temperature for rollout diversity

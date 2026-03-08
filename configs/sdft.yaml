@@ -11,10 +11,10 @@ model:
   # Qwen2.5-3B-Instruct model
   name: "Qwen/Qwen2.5-3B-Instruct"
   # GPU for the student model (trainable)
-  student_device: [0]
+  student_device: [3]
   # GPU for the teacher model (EMA, inference-only)
   # Set to the same as student_device to use a single GPU
-  teacher_device: [5]
+  teacher_device: [0]
 
 training:
   num_epochs: 1
