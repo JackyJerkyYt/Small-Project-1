@@ -4,7 +4,9 @@ version = "0.1.0"
 description = "Fine-tune and evaluate instruction-tuned LLMs with/without chat templates"
 requires-python = ">=3.10"
 dependencies = [
-    "torch>=2.1.0",
+    "torch>=2.4.0",
+    "torchvision>=0.19.0",
+    "vllm>=0.6.2",
     "transformers>=4.46.0",
     "trl>=0.12.0",
     "datasets>=3.0.0",

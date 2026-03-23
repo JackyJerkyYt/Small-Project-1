@@ -15,3 +15,20 @@ uv run python -m src.evaluate --task gsm8k \
     --output_dir results/gsm8k/eval/chat_sdft_eval_chat
 
 echo "=== All evaluations complete ==="
+
+
+uv run python -m src.evaluate --task math \
+    --model_path /data/jacky/small_project_1/results/math/models/chat_sdft_math_20260309_013349 \
+    --use_chat_template \
+    --output_dir results/math/eval/chat_sdft_eval_chat
+
+uv run python -m src.evaluate --task math \
+    --model_path /data/jacky/small_project_1/results/math/models/chat_onpolicysft_maskq_math_20260309_062531 \
+    --use_chat_template \
+    --output_dir results/math/eval/chat_onpolicysft_maskq_eval_chat
+
+
+uv run python -m src.evaluate --task math \
+    --model_path /data/jacky/small_project_1/results/math/models/official_sdft_chat_template \
+    --use_chat_template \
+    --output_dir results/math/eval/official_sdft_chat_template_math

@@ -93,6 +93,14 @@ ALL_EXPERIMENTS = [
         mask_question=False,
         description="SDFT without chat template",
     ),
+    # --- Official SDFT (paper authors' implementation) ---
+    Experiment(
+        name="official_sdft_chat_template",
+        method="official_sdft",
+        use_chat_template=True,
+        mask_question=False,
+        description="Official SDFT (paper authors' code) with chat template",
+    ),
 ]
 
 
@@ -113,6 +121,19 @@ def _default_config(method: str) -> str:
 
 def run_training(exp: Experiment, task: str, base_dir: str):
     model_dir = os.path.join(base_dir, "models", exp.name)
+
+    gdp = gold_data_path(task)
+
+    # Official SDFT uses a standalone script with different CLI args
+    if exp.method == "official_sdft":
+        cmd = [
+            sys.executable, "run_official_sdft.py",
+            "--task", task,
+            "--output_dir", model_dir,
+            "--gold_data_path", gdp,
+        ]
+        return run_cmd(cmd, f"TRAIN: {exp.description}")
+
     config_path = exp.config or _default_config(exp.method)
     gdp = gold_data_path(task)
 
@@ -209,6 +230,7 @@ Available experiments:
   dpo_akshat_chat_template    - DPO akshat (64 rollouts/question) with chat template
   sdft_chat_template          - SDFT with chat template
   sdft_no_chat                - SDFT without chat template
+  official_sdft_chat_template - Official SDFT (paper authors' code)
         """,
     )
     parser.add_argument("--task", type=str, default="gsm8k", help="Task name")

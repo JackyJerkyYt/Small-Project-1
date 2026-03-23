@@ -9,7 +9,7 @@ generation:
 
 
 eval:
-  per_device_batch_size: 16  # number of prompts to generate in parallel (higher = faster but more VRAM)
+  per_device_batch_size: 32  # number of prompts to generate in parallel (higher = faster but more VRAM)
   max_samples: null  # null = use all samples; set an integer to limit
   bf16: true  # use bfloat16 for inference (set to false for fp32)
   # GPU selection (sets CUDA_VISIBLE_DEVICES before importing torch):
@@ -17,4 +17,4 @@ eval:
   #   - "cuda:0": use only GPU 0
   #   - "cuda:2": use only GPU 2
   #   - [2, 7]: use GPUs 2 and 7 for model parallelism
-  device: "cuda:0"
+  device: "cuda:5"
